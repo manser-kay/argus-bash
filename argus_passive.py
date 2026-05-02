@@ -503,6 +503,11 @@ class PassiveScanner(http.server.SimpleHTTPRequestHandler):
                 if host and set_cookie:
                     update_cookies(host, set_cookie)
                 
+                # Сохраняем в историю
+                save_to_history(method, path, headers, body, response.status, len(resp_body))
+                # Проверяем IDOR
+                check_idor(path, body, resp_body.decode('utf-8', errors='ignore'))
+                
                 self.send_response(response.status)
                 for k,v in response.headers.items():
                     self.send_header(k, v)
