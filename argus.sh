@@ -321,6 +321,7 @@ json.dump(jar, open('$COOKIE_JAR_FILE', 'w'), indent=2)
 
 # ===== NUCLEI SCANNER =====
 run_nuclei_scan() {
+    [ "$OFFLINE" = true ] && echo -e "  ${YELLOW}[OFFLINE] Nuclei пропущен${NC}" && return
     echo -e "\n${CYAN}[*] Nuclei Scan (200+ templates)...${NC}"
     if [ -x "$(which nuclei 2>/dev/null)" ]; then
         nuclei -u "$TARGET" -t "$NUCLEI_DIR" -silent -o "$REPORT/nuclei_results.txt" 2>/dev/null
@@ -494,6 +495,7 @@ decoy_generator() {
 
 # ===== BUG BOUNTY =====
 bug_bounty_hunter() {
+    [ "$OFFLINE" = true ] && echo -e "  ${YELLOW}[OFFLINE] Bug Bounty поиск пропущен${NC}" && return
     local domain="$1"
     curl -s "https://hackerone.com/$domain" 2>/dev/null | grep -qi "bounty\|scope" && echo "HackerOne: https://hackerone.com/$domain" >> "$REPORT/bug_bounty_scope.txt"
     curl -s "https://bugcrowd.com/$domain" 2>/dev/null | grep -qi "program\|scope" && echo "Bugcrowd: https://bugcrowd.com/$domain" >> "$REPORT/bug_bounty_scope.txt"
@@ -688,6 +690,7 @@ p2p_cve_update() {
 
 # ===== SOCIAL OSINT =====
 social_osint() {
+    [ "$OFFLINE" = true ] && echo -e "  ${YELLOW}[OFFLINE] Social OSINT пропущен${NC}" && return
     local domain="$1"; local org_name=$(echo "$domain" | cut -d. -f1)
     curl -s "https://www.linkedin.com/company/$org_name/people/" 2>/dev/null | grep -oP 'title="[^"]*"' | cut -d'"' -f2 | head -10 > "$OSINT/linkedin.txt"
     curl -s "https://api.github.com/search/users?q=org:$org_name" 2>/dev/null | grep -oP '"login":"[^"]*"' | cut -d'"' -f4 | head -10 > "$OSINT/github.txt"
@@ -706,6 +709,7 @@ ${CYAN}[*] Supply Chain Hunter...${NC}"
 
 wait
 osint_collect() {
+    [ "$OFFLINE" = true ] && echo -e "  ${YELLOW}[OFFLINE] OSINT пропущен${NC}" && return
     local domain="$DOMAIN"
     echo -e "\n${CYAN}[2/24] OSINT (10 sources)...${NC}"
     > "$OSINT/subdomains.txt"
@@ -1448,6 +1452,13 @@ run_plugins() { local stage=$1; [ -d "$PLUGIN_DIR" ] && for plugin in "$PLUGIN_D
 banner() {
     clear
     echo -e "${RED}"
+# Авто-очистка временных файлов
+echo -e "\n${CYAN}[*] Cleaning up...${NC}"
+rm -f /tmp/passlist.txt /tmp/pass_chunk_* /tmp/gql_payloads.txt /tmp/rockyou_dl.txt /tmp/ua_list.txt 2>/dev/null
+rm -f /tmp/ai_suggestions.txt /tmp/cover_*.jpg /tmp/stego_*.jpg 2>/dev/null
+find /tmp -name ".argus_*" -mtime +1 -delete 2>/dev/null
+echo -e "${GREEN}[+] Временные файлы удалены${NC}"
+echo ""
     echo "╔══════════════════════════════════════════════╗"
     echo "║   ARGUS v40.0 - GOD MODE+            ║"
     echo "║   + INTRUDER + COOKIE JAR                    ║"
@@ -1524,6 +1535,22 @@ echo -e "\n${CYAN}[*] API Auto-Detect...${NC}"${WHITE}Target: $TARGET | Report: 
 echo -e "\n${CYAN}[*] API Auto-Detect...${NC}"${YELLOW}Mode: FULL v47.0 - Stealth Ops+${NC}"
 
 hot_reload_config
+# ===== ПРЕДПОЛЕТНАЯ ПРОВЕРКА =====
+echo -e "\n${CYAN}[0/24] Pre-flight check...${NC}"
+MISSING=""
+for cmd in nmap sqlmap curl python3 openssl; do
+    if ! command -v $cmd >/dev/null 2>&1; then
+        echo -e "  ${RED}❌ $cmd не найден${NC}"
+        MISSING="$MISSING $cmd"
+    else
+        echo -e "  ${GREEN}✅ $cmd${NC}"
+    fi
+done
+if [ -n "$MISSING" ]; then
+    echo -e "${RED}[!] Установи: pkg install $MISSING${NC}"
+    exit 1
+fi
+echo ""
 health_check
 
 # === LIVE CVE CHECK (2025-2026) ===
