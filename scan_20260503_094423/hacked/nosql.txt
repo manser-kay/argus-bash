@@ -1,0 +1,3 @@
+NoSQL: {"$gt":""}
+NoSQL: {"$ne":null}
+NoSQL: {"$where":"sleep(1000)"}

@@ -1,0 +1,2 @@
+CORS wildcard
+CORS: *

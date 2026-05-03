@@ -1,5 +1,0 @@
-# Только самые важные и быстрые проверки
-curl -s TARGET/.env
-curl -s TARGET/.git/HEAD
-curl -s TARGET/phpinfo.php
-nmap -T4 --top-ports 10 TARGET
