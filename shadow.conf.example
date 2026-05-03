@@ -1,6 +1,25 @@
-# ShadowStrike Configuration
+# ShadowStrike v56.1 Configuration
+
+# Telegram
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
+
+# API Keys
 SHODAN_API=""
 VIRUSTOTAL_API=""
+HUNTER_API=""
 AI_API_KEY=""
+
+# C2
+C2_PORT=8443
+C2_JITTER_MIN=1
+C2_JITTER_MAX=5
+
+# Scan
+THREADS=50
+TIMEOUT=30
+DEFAULT_SCOPE=""
+
+# Logging
+LOG_DIR=~/shadow_logs
+LOG_LEVEL=INFO
