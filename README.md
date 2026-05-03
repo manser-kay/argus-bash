@@ -1,6 +1,8 @@
 # ShadowStrike — Hacker's Swiss Army Knife
 
-**82 модуля | Android/Linux/macOS | Бесплатно**
+**30+ базовых модулей + архив оригинальных версий | Android/Linux/macOS | Бесплатно**
+
+Персональный Red Team фреймворк. Всё что нужно для пентеста в одном месте.
 
 ## 🚀 Быстрый старт
 
@@ -12,18 +14,21 @@ chmod +x shadow.sh
 
 ## ⚡ Основные команды
 
-./shadow scan <url>         Полный скан (порты + SQLi + XSS + Nuclei)
+./shadow scan <url>         Полный скан
 ./shadow quick <url>        Быстрый скан (5 минут)
-./shadow passive            Пассивный сбор (прокси 127.0.0.1:9990)
-./shadow c2 <port>          Поднять C2 сервер
+./shadow passive            Пассивный сбор (прокси)
+./shadow c2 <port>          C2 сервер
 ./shadow console            Боевая консоль
 
-## 📁 Что в папке
+## 📁 Состав
 
-shadow.sh               Ядро
+**Ядро:**
+shadow.sh               Основной фреймворк
 shadow_passive.py        Пассивный сканер
 shadow_c2_server.py      C2 сервер
 shadow_c2_agent.sh       C2 агент
+
+**Утилиты:**
 smart_brute.sh           Умный брутфорс
 waf_detect.sh            Детектор WAF
 quick_loot.sh            Поиск сокровищ
@@ -32,15 +37,8 @@ portscan.sh              Скан портов
 header_audit.sh          Аудит заголовков
 stealer.sh               Аудитор утечек данных
 
-## 💡 Примеры
-
-./smart_brute.sh http://target.com          Сгенерировать пароли
-./waf_detect.sh http://target.com           Проверить WAF
-./quick_loot.sh http://target.com           Быстрый поиск .env/.git
-./subfinder.sh target.com                   Найти поддомены
-./portscan.sh target.com                    Скан топ-20 портов
-./header_audit.sh http://target.com         Аудит заголовков безопасности
-./stealer.sh                                Аудит утечек данных
+**Архив (archive/):**
+Оригинальные v1 модули — Echo, Spider, Jammer, Hydra, Reflective WAF, Psycho
 
 ## ⚠️ Ответственность
 
